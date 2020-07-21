@@ -13,7 +13,7 @@ def get_baseSearch(database, query):
     if len(query) == 1:
         baseSearch = "esearch.fcgi?db={}&term={}&usehistory=y".format(database, query[0])
     else:
-        new_query =  '+AND+'.join(query)
+        new_query =  '+'.join(query)
         baseSearch = "esearch.fcgi?db={}&term={}&usehistory=y".format(database, new_query)
     return baseSearch
 
@@ -40,26 +40,24 @@ def get_webenv(database, query):
     Function obtains webEnv and queryKey from esearch in order to fetch data from database
     '''
     xmlfile = url_to_xml(database, query)
-    for child in xmlfile:
-        if child.tag == "WebEnv":
-            webEnv = child.text
-        elif child.tag == "QueryKey":
-            queryKey = child.text
-        else:
-            continue
-    return webEnv, queryKey
+    webEnv = xmlfile.find("WebEnv").text
+    queryKey = xmlfile.find("QueryKey").text
+    count =  int(xmlfile.find("Count").text)
+    return webEnv, queryKey, count
 
 
-def get_baseFetch(database, query, retTypeVar, retModeVar):
-    
-    webEnv = get_webenv(database, query)[0]
-    queryKey = get_webenv(database, query)[1]
-    baseFetch = "efetch.fcgi?db={}&query_key={}&WebEnv={}&rettype={}&retmode={}".format(database, queryKey, webEnv, retTypeVar, retModeVar)
+def get_baseFetch(database, querykey, webEnv, retTypeVar, retModeVar, retStartVar,retMaxVar):
+
+    baseFetch = "efetch.fcgi?db={}&query_key={}&WebEnv={}&rettype={}\
+    &retmode={}\&retstart={}&retmax={}&tool=fas-gb-retriever".format(database, querykey, webEnv, retTypeVar, retModeVar, retStartVar, retMaxVar)
     return baseFetch
 
 def get_data(database, query, retTypeVar, retModeVar):
     global baseURL
     file_name = get_name(query)
+    webEnv,  queryKey, count = get_webenv(database, query)
+    retStartVar = 0
+    retMaxVar = 300
     
     if retModeVar == "text":
         if retTypeVar == "fasta":
@@ -71,9 +69,16 @@ def get_data(database, query, retTypeVar, retModeVar):
     else:
         file_type = ".xml"
 
-    bf = get_baseFetch(database, query, retTypeVar, retModeVar)
-    open_fetch = requests.get(baseURL+bf)
-    text = open_fetch.content.decode('utf-8')
+    if count < retMaxVar:
+        bf = get_baseFetch(database, queryKey, webEnv, retTypeVar, retModeVar, retStartVar,retMaxVar)
+        open_fetch = requests.get(baseURL+bf)
+        text = open_fetch.content.decode('utf-8')
+    else:
+        while retStartVar <  count:
+            bf = get_baseFetch(database, queryKey, webEnv, retTypeVar, retModeVar, retStartVar,retMaxVar)
+            open_fetch = requests.get(baseURL+bf)
+            text += open_fetch.content.decode('utf-8')
+            retStartVar += retMaxVar
     
     with open(str(file_name) + file_type, "w") as out:
         for line in text:
